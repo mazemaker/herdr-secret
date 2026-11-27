@@ -1,0 +1,40 @@
+name: release
+# Push a tag vX.Y.Z (matching herdr-plugin.toml and npm/package.json) to publish.
+# npm accepts this workflow through trusted publishing (OIDC): no token is stored anywhere,
+# and the package gets a provenance attestation that links it to this commit and run.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # GitHub release
+  id-token: write   # npm trusted publishing and provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+      - run: npm install -g npm@latest   # trusted publishing needs npm 11.5.1 or newer
+      - name: Tag matches both versions
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          plugin=$(sed -n 's/^version = "\(.*\)"/\1/p' herdr-plugin.toml)
+          npm=$(node -p 'require("./npm/package.json").version')
+          [ "$tag" = "$plugin" ] && [ "$tag" = "$npm" ] || { echo "tag $tag, plugin $plugin, npm $npm"; exit 1; }
+      - name: Tests
+        run: |
+          python3 -I tests/test_store.py
+          python3 -I tests/test_form_pty.py
+          python3 -I tests/test_setup.py
+      - name: Publish to npm
+        working-directory: npm
+        run: npm publish --provenance --access public
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes --verify-tag

@@ -1,5 +1,9 @@
 # herdr-secret
 
+[![npm](https://img.shields.io/npm/v/herdr-secret)](https://www.npmjs.com/package/herdr-secret)
+[![test](https://github.com/mazemaker/herdr-secret/actions/workflows/test.yml/badge.svg)](https://github.com/mazemaker/herdr-secret/actions/workflows/test.yml)
+[![license](https://img.shields.io/github/license/mazemaker/herdr-secret)](LICENSE)
+
 A [herdr](https://herdr.dev) plugin that lets a coding agent ask you for a credential
 without the value ever entering the agent's conversation.
 
@@ -10,22 +14,7 @@ and they go straight into your operating system's credential store. The agent on
 The form is a herdr popup, not a desktop window, so it shows up wherever you are attached:
 at the machine, over SSH, or from a phone.
 
-```
-  Credential requested: DB_LOGIN
-  From  : w3:p1  (as reported by the requester)
-  For   : Staging database, read-only user
-
-  ┌ Username ─────────────────────────────────────┐
-  │ readonly                                      │
-  └───────────────────────────────────────────────┘
-  ┌ Password (hidden) ────────────────────────────┐
-  │ ••••••••••••                                  │
-  └───────────────────────────────────────────────┘
-
-  [ Save ]  [ Cancel ]
-
-  Tab/↑↓ move · Enter next · Ctrl-R reveal · Esc cancel
-```
+![An agent asks for a database login; the human fills it in a herdr popup](docs/form.png)
 
 ## Install
 
@@ -138,6 +127,10 @@ python3 -I tests/test_setup.py      # setup and uninstall in a throwaway home wi
 ```
 
 CI runs these on macOS, on Linux with and without a Secret Service, and on Windows.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for how to report a problem and how releases are published.
 
 ## License
 
