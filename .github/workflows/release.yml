@@ -31,6 +31,7 @@ jobs:
           python3 -I tests/test_store.py
           python3 -I tests/test_form_pty.py
           python3 -I tests/test_setup.py
+          python3 -I tests/test_app.py
           (cd npm && npm test)
       - name: Publish to npm
         working-directory: npm

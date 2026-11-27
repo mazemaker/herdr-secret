@@ -16,6 +16,7 @@ jobs:
         env: { EXPECT_BACKEND: macOS Keychain }
       - run: python3 -I tests/test_form_pty.py
       - run: python3 -I tests/test_setup.py
+      - run: python3 -I tests/test_app.py
       - run: npm test
         working-directory: npm
 
@@ -30,7 +31,8 @@ jobs:
             printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null
             EXPECT_BACKEND="Secret Service" python3 -I tests/test_store.py &&
             python3 -I tests/test_form_pty.py &&
-            python3 -I tests/test_setup.py'
+            python3 -I tests/test_setup.py &&
+            python3 -I tests/test_app.py'
 
   linux-file-fallback:
     runs-on: ubuntu-latest
@@ -40,6 +42,7 @@ jobs:
         env: { EXPECT_BACKEND: file 0600 }
       - run: python3 -I tests/test_form_pty.py
       - run: python3 -I tests/test_setup.py
+      - run: python3 -I tests/test_app.py
       - run: sh -n install.sh
       - name: npm package matches the plugin version and packs
         run: |
@@ -61,6 +64,7 @@ jobs:
       - run: python -I tests/test_store.py
         env: { EXPECT_BACKEND: Windows Credential Manager }
       - run: python -I tests/test_setup.py
+      - run: python -I tests/test_app.py
       - run: npm test
         working-directory: npm
       - name: Launcher resolves Python
