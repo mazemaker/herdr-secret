@@ -33,16 +33,7 @@ at the machine, over SSH, or from a phone.
 npx herdr-secret@latest
 ```
 
-The same command works on macOS, Linux and Windows. Without Node.js, use the shell installer
-instead:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/mazemaker/herdr-secret/main/install.sh | sh   # macOS, Linux
-```
-
-```powershell
-irm https://raw.githubusercontent.com/mazemaker/herdr-secret/main/install.ps1 | iex       # Windows
-```
+The same command works on macOS, Linux and Windows.
 
 The installer adds the plugin to herdr (herdr shows you what it will run and asks first), then
 walks you through setup:
@@ -63,9 +54,8 @@ Everything it adds sits between `herdr-secret:begin` and `herdr-secret:end` mark
 `herdr-secret uninstall` (or `npx herdr-secret uninstall`) removes all of it, asks whether to
 delete stored credentials, and can remove the plugin from herdr.
 
-If you would rather read the script first, download `install.sh` and run it with `sh`. If you
-install with plain `herdr plugin install mazemaker/herdr-secret`, setup opens by itself the next
-time herdr starts, or open it any time with
+If you install with plain `herdr plugin install mazemaker/herdr-secret`, setup opens by itself
+the next time herdr starts, or open it any time with
 `herdr plugin action invoke mazemaker.secret.setup` (`setup-windows` on Windows).
 
 Requirements:
