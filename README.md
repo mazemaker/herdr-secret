@@ -4,8 +4,8 @@
 [![test](https://github.com/mazemaker/herdr-secret/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/mazemaker/herdr-secret/actions/workflows/test.yml)
 [![license](https://img.shields.io/github/license/mazemaker/herdr-secret)](LICENSE)
 
-A [herdr](https://herdr.dev) plugin that lets a coding agent ask you for a credential
-without the value ever entering the agent's conversation.
+A plugin for the [herdr](https://herdr.dev) terminal app (the TUI) that lets a coding agent
+ask you for a credential without the value ever entering the agent's conversation.
 
 The agent runs one command. A form pops up in your herdr session, you type the values there,
 and they go straight into your operating system's credential store. The agent only gets back
@@ -15,6 +15,11 @@ The form is a herdr popup, not a desktop window, so it shows up wherever you are
 at the machine, over SSH, or from a phone.
 
 ![An agent asks for a database login; the human fills it in a herdr popup](docs/form.png)
+
+> **herdr TUI only.** The form is a herdr TUI plugin popup. Herdr.app, the desktop app, runs
+> its agents in herdr-core, which has no plugin popups, so this plugin does not work there:
+> `herdr-secret ask` from a Herdr.app terminal stops at once with an error instead of opening
+> a form.
 
 ## Install
 
@@ -49,7 +54,7 @@ the next time herdr starts, or open it any time with
 
 Requirements:
 
-- herdr 0.9.5 or newer
+- the herdr TUI, 0.9.5 or newer (not Herdr.app)
 - Python 3.8 or newer, which the plugin runs on. Only the standard library is used.
 - Node.js 18 or newer, only for the `npx` installer.
   - macOS and Linux: `python3` on the PATH herdr runs with.

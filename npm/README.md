@@ -6,9 +6,12 @@
 
 Let your coding agents ask you for credentials without the value ever entering their chat.
 
-An agent runs `herdr-secret ask`. A form pops up in your [herdr](https://herdr.dev) session,
-you type the value there, and it goes straight into your operating system's credential store.
-The agent only gets back whether you answered.
+For the [herdr](https://herdr.dev) terminal app (the TUI). An agent runs `herdr-secret ask`, a
+form pops up in your herdr session, you type the value there, and it goes straight into your
+operating system's credential store. The agent only gets back whether you answered.
+
+Herdr.app, the desktop app, is not supported: its agents run in herdr-core, which has no
+plugin popups.
 
 ![An agent asks for a database login; the human fills it in a herdr popup](https://raw.githubusercontent.com/mazemaker/herdr-secret/main/docs/form.png)
 
@@ -52,5 +55,5 @@ agent cannot read it.
 - [What it protects and what it doesn't](https://github.com/mazemaker/herdr-secret#what-this-does-and-doesnt-protect),
   and [how to report a security problem](https://github.com/mazemaker/herdr-secret/blob/main/SECURITY.md).
 
-Requires herdr 0.9.5+, Python 3.8+ (the plugin runs on it), and Node 18+ for this installer.
+Requires the herdr TUI 0.9.5+, Python 3.8+ (the plugin runs on it), and Node 18+ for this installer.
 MIT licensed.

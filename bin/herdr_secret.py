@@ -749,6 +749,12 @@ def cmd_ask(argv):
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
+    if not os.environ.get("HERDR_PANE_ID") and os.environ.get("HC_TERMINAL_SOCKET"):
+        # A Herdr.app (herdr-core) terminal: the form would open in the herdr TUI, where nobody
+        # may be looking, and the ask would only time out. Say so instead.
+        print(f"FAILED {name} [herdr-secret needs the herdr TUI; this terminal belongs to "
+              f"Herdr.app (herdr-core), which has no plugin popups]")
+        return 1
     req = f"{int(time.time())}-{os.getpid()}-{secrets.token_hex(4)}"
     deadline = time.time() + timeout
     herdr = os.environ.get("HERDR_BIN_PATH") or shutil.which("herdr") or "herdr"
