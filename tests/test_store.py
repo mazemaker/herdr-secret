@@ -63,7 +63,8 @@ for label, want in (("macOS Keychain", "(encrypted)"), ("Secret Service", "(encr
         failures.append(f"store note for {label}: {text!r}")
 note = hs.store_note()[0]
 lines, _ = hs.Form(fields[:2], "N", "w1:p1", "short", "").render(76, 30)
-joined = " ".join(" ".join(ln.split()) for ln in lines)
+import re  # noqa: E402
+joined = " ".join(re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", ln).strip() for ln in lines)
 if "Saved : " not in joined or "never sent to the agent's chat" not in joined:
     failures.append("form does not say where the value goes")
 
