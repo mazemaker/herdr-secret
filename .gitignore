@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+# written by `herdr-app check`
+mods/*/gpui-kit.d.ts
+mods/*/jsconfig.json

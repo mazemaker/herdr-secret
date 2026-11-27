@@ -648,6 +648,29 @@ def parse_fields(spec, value_label="Value"):
     return out, len(out) == 1 and out[0][0] == "value"
 
 
+def store_fields(name, single, fields, values):
+    """Store every value or none: on a failure the earlier fields get their old values back.
+    Returns (ok, where)."""
+    accts = [name if single else f"{name}.{f}" for f, _l, _h in fields]
+    prev = {a: fetch_any(a) for a in accts}
+    where, done = set(), []
+    for a, value in zip(accts, values):
+        label = store_any(a, value)
+        if label is None:
+            break
+        where.add(label)
+        done.append(a)
+    ok = len(done) == len(accts)
+    if not ok:
+        for a in done:
+            if prev[a] is None:
+                remove_any(a)
+            else:
+                store_any(a, prev[a])
+    prev.clear()
+    return ok, where
+
+
 def cmd_form():
     name = os.environ.get("SECRET_NAME", "")
     req = os.environ.get("SECRET_REQ", "")
@@ -695,20 +718,7 @@ def cmd_form():
             return 1
         if guarded:   # a stored value must never be reported as CANCELLED
             signal.pthread_sigmask(signal.SIG_BLOCK, set(guarded))
-        where, done = set(), []
-        for a, value in zip(accts, result):
-            label = store_any(a, value)
-            if label is None:
-                break
-            where.add(label)
-            done.append(a)
-        ok = len(done) == len(accts)
-        if not ok:    # roll back, so a login is never left half new and half old
-            for a in done:
-                if prev[a] is None:
-                    remove_any(a)
-                else:
-                    store_any(a, prev[a])
+        ok, where = store_fields(name, single, fields, result)
         result[:] = []
         prev.clear()
         status(("OK " + ", ".join(sorted(where))) if ok else "FAILED")
@@ -749,12 +759,16 @@ def cmd_ask(argv):
     except ValueError as e:
         print(str(e), file=sys.stderr)
         return 2
-    if not os.environ.get("HERDR_PANE_ID") and os.environ.get("HC_TERMINAL_SOCKET"):
-        # A Herdr.app (herdr-core) terminal: the form would open in the herdr TUI, where nobody
-        # may be looking, and the ask would only time out. Say so instead.
-        print(f"FAILED {name} [herdr-secret needs the herdr TUI; this terminal belongs to "
-              f"Herdr.app (herdr-core), which has no plugin popups]")
-        return 1
+    if in_app_terminal():
+        # A Herdr.app (herdr-core) terminal. herdr-core has no plugin popups; the herdr-secret
+        # mod shows the form as a Herdr.app dialog instead. Without it, say so at once rather
+        # than open a TUI popup nobody may be looking at.
+        if not os.path.exists(os.path.join(app_mod_dir(), "main.js")):
+            tag = f" ({fields})" if fields and fields != "value:plain" else ""
+            print(f"FAILED {name}{tag} [this terminal belongs to Herdr.app; install the herdr-secret mod "
+                  f"with: npx herdr-secret@latest]")
+            return 1
+        return app_ask(name, purpose, fields, timeout)
     req = f"{int(time.time())}-{os.getpid()}-{secrets.token_hex(4)}"
     deadline = time.time() + timeout
     herdr = os.environ.get("HERDR_BIN_PATH") or shutil.which("herdr") or "herdr"
@@ -786,6 +800,261 @@ def cmd_ask(argv):
         time.sleep(0.5)
     print(f"TIMEOUT {name}{tag}")
     return 1
+
+
+# ---------------------------------------------------------------- Herdr.app dialog
+#
+# Herdr.app runs its terminals in herdr-core, which has no plugin popups. There, ask opens the
+# herdr-secret mod (mods/herdr-secret) as a Herdr.app dialog instead. Mods can run programs only
+# with arguments (no stdin), so a typed value would show in the process list on its way to the
+# store. So ask writes a one-time pad into the request (in a 0700 folder); the mod XORs each
+# value with its slice of the pad and passes hex, and app-store undoes that and deletes the
+# request, pad included. Every app-store call ends the request, so a pad never covers two values.
+
+PAD_PER_FIELD = 4096          # bytes; MAX_VALUE characters are at most 4000 bytes of UTF-8
+APP_MOD = "herdr-secret"
+APP_MOD_FILES = ("main.js", "mod.json")
+APP_MOD_MARK = "// herdr-secret for Herdr.app"
+APP_GRACE = 1.0               # seconds between one dialog closing and the next opening
+
+
+def app_home():
+    return os.environ.get("HERDR_APP_HOME") or os.path.expanduser("~/.config/herdr-app")
+
+
+def app_mod_dir():
+    return os.path.join(app_home(), "mods", APP_MOD)
+
+
+def is_our_mod(d):
+    try:
+        with open(os.path.join(d, "main.js"), encoding="utf-8") as f:
+            return f.readline().startswith(APP_MOD_MARK)
+    except OSError:
+        return False
+
+
+def herdr_app_bin():
+    return shutil.which("herdr-app")
+
+
+def app_present():
+    return bool(herdr_app_bin()) or os.path.isdir(app_home())
+
+
+def in_app_terminal():
+    return not os.environ.get("HERDR_PANE_ID") and bool(os.environ.get("HC_TERMINAL_SOCKET"))
+
+
+def app_state_dir():
+    """The request and its answer. The mod finds them from its home() alone and does not see
+    this process's environment, so XDG_STATE_HOME and LOCALAPPDATA do not apply here."""
+    d = os.path.join(os.path.expanduser("~"), ".local", "state", "herdr-secret")
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    if not IS_WIN:
+        os.chmod(d, 0o700)
+    return d
+
+
+def app_request_path():
+    return os.path.join(app_state_dir(), "app-request.json")
+
+
+def app_status_path(req):
+    return os.path.join(app_state_dir(), req + ".status")
+
+
+def app_request(name, purpose, fields_spec, deadline):
+    """Write the request the mod shows and return its id. Raises FileExistsError if another
+    request got there first: creating the file is what claims the one dialog."""
+    import json
+    fields, single = parse_fields(fields_spec)
+    req = f"{int(time.time())}-{os.getpid()}-{secrets.token_hex(4)}"
+    accts = [name if single else f"{name}.{f}" for f, _l, _h in fields]
+    known = set(names_any())
+    note, encrypted = store_note()
+    term = clean(os.environ.get("HC_TERMINAL_ID", ""), 40)
+    text = json.dumps({
+        "req": req, "name": name, "purpose": clean(purpose),
+        "from": f"terminal {term}" if term else T["unknown"],
+        "fields": [{"name": f, "label": label, "hidden": hidden} for f, label, hidden in fields],
+        "store": note, "encrypted": encrypted,
+        "replaces": [a for a in accts if a in known],
+        "deadline": deadline, "max": MAX_VALUE,
+        "pad": secrets.token_hex(PAD_PER_FIELD * len(fields)),
+        "python": sys.executable, "script": os.path.realpath(__file__),
+    })
+    fd = os.open(app_request_path(), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    return req
+
+
+def app_wait_turn(deadline):
+    """One dialog at a time. False if another request was still open at our deadline."""
+    import json
+    path = app_request_path()
+    while os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                other = json.load(f)
+            if other.get("deadline", 0) + 5 < time.time():
+                os.unlink(path)                  # left behind by an asker that was killed
+                continue
+        except (OSError, ValueError, AttributeError):
+            pass
+        if time.time() >= deadline:
+            return False
+        time.sleep(0.5)
+    # mod.open toggles: a dialog that is still closing would be closed again instead of opened.
+    try:
+        with open(os.path.join(app_state_dir(), "app-done"), encoding="utf-8") as f:
+            wait = float(f.read()) + APP_GRACE - time.time()
+        if wait > 0:
+            time.sleep(min(wait, APP_GRACE))
+    except (OSError, ValueError):
+        pass
+    return True
+
+
+def app_raise():
+    """mod.open shows the dialog in the Herdr window; bring that window forward too."""
+    if IS_MAC:
+        subprocess.run(["open", "-a", "Herdr"], stdout=DEVNULL, stderr=DEVNULL)
+
+
+def app_ask(name, purpose, fields_spec, timeout):
+    tag = f" ({fields_spec})" if fields_spec and fields_spec != "value:plain" else ""
+    deadline = time.time() + timeout
+    while True:
+        if not app_wait_turn(deadline):
+            print(f"TIMEOUT {name}{tag} [another credential request was still open]")
+            return 1
+        try:
+            req = app_request(name, purpose, fields_spec, deadline)
+            break
+        except FileExistsError:
+            continue
+    try:
+        try:
+            r = subprocess.run([herdr_app_bin() or "herdr-app", "do", "mod.open", "--name", APP_MOD],
+                               capture_output=True, text=True, timeout=30)
+            err = "" if r.returncode == 0 else (r.stderr or r.stdout).strip() or f"exit {r.returncode}"
+        except (OSError, subprocess.TimeoutExpired) as e:
+            err = str(e)
+        if err:
+            print(f"FAILED {name}{tag} [herdr-app: {clean(err, 200)}]")
+            return 1
+        app_raise()
+        status_path = app_status_path(req)
+        while time.time() < deadline + 5:        # the dialog closes itself at the deadline
+            if os.path.exists(status_path):
+                with open(status_path, encoding="utf-8") as f:
+                    s = f.read().strip()
+                os.unlink(status_path)
+                word, _, where = s.partition(" ")
+                print(f"{word} {name}{tag}" + (f" [{where}]" if where else ""))
+                return 0 if word == "OK" else 1
+            time.sleep(0.5)
+        print(f"TIMEOUT {name}{tag}")
+        return 1
+    finally:
+        if app_load(req) is not None:
+            try:
+                os.unlink(app_request_path())
+            except OSError:
+                pass
+
+
+def app_load(req):
+    import json
+    if not REQ_RE.fullmatch(req or ""):
+        return None
+    try:
+        with open(app_request_path(), encoding="utf-8") as f:
+            request = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return request if isinstance(request, dict) and request.get("req") == req else None
+
+
+def app_finish(req, status):
+    """End the request: the pad goes first, then the asker gets its answer."""
+    write_atomic(os.path.join(app_state_dir(), "app-done"), f"{time.time():.3f}\n")
+    if app_load(req) is not None:
+        try:
+            os.unlink(app_request_path())
+        except OSError:
+            pass
+    write_atomic(app_status_path(req), status + "\n")
+
+
+def cmd_app_store(argv):
+    """Called by the Herdr.app mod: app-store REQ HEX... (one padded value per field)."""
+    if not argv:
+        return 2
+    req, hexes = argv[0], argv[1:]
+    request = app_load(req)
+    if request is None or not isinstance(request.get("deadline"), (int, float)) \
+            or time.time() > request["deadline"] + 5:
+        print("FAILED request expired")
+        return 1
+
+    def fail(reason):
+        app_finish(req, "FAILED " + reason)
+        print("FAILED " + reason)
+        return 1
+
+    try:
+        name = request["name"]
+        fields = [(f["name"], f["label"], f["hidden"]) for f in request["fields"]]
+        pad = bytes.fromhex(request["pad"])
+    except (KeyError, TypeError, ValueError):
+        return fail("bad request")
+    if not NAME_RE.fullmatch(name) or not fields or not all(FIELD_RE.fullmatch(f) for f, _l, _h in fields):
+        return fail("bad request")
+    if len(hexes) != len(fields):
+        return fail("wrong number of values")
+    values = []
+    for i, h in enumerate(hexes):
+        try:
+            data = bytes.fromhex(h)
+        except ValueError:
+            return fail("bad value encoding")
+        if len(data) > PAD_PER_FIELD:
+            return fail("value too long")
+        key = pad[i * PAD_PER_FIELD:i * PAD_PER_FIELD + len(data)]
+        if len(key) != len(data):
+            return fail("bad request")
+        try:
+            value = bytes(b ^ k for b, k in zip(data, key)).decode("utf-8")
+        except UnicodeDecodeError:
+            return fail("bad value encoding")
+        if not value:
+            return fail("empty value")
+        if len(value) > MAX_VALUE:
+            return fail("value too long")
+        if CONTROL.search(value):
+            return fail("control characters are not allowed")
+        values.append(value)
+    single = len(fields) == 1 and fields[0][0] == "value"
+    ok, where = store_fields(name, single, fields, values)
+    values[:] = []
+    status = ("OK " + ", ".join(sorted(where))) if ok else "FAILED"
+    app_finish(req, status)
+    print(status)
+    return 0 if ok else 1
+
+
+def cmd_app_cancel(argv):
+    """Called by the Herdr.app mod: app-cancel REQ [TIMEOUT]."""
+    req = argv[0] if argv else ""
+    if app_load(req) is None:
+        return 1
+    app_finish(req, "TIMEOUT" if argv[1:2] == ["TIMEOUT"] else "CANCELLED")
+    return 0
 
 
 # ---------------------------------------------------------------- setup wizard
@@ -1254,6 +1523,10 @@ def main(argv):
         return cmd_open_setup()
     if cmd == "startup":
         return cmd_startup()
+    if cmd == "app-store":
+        return cmd_app_store(args)
+    if cmd == "app-cancel":
+        return cmd_app_cancel(args)
     if cmd == "list":
         for n in names_any():
             print(n)
