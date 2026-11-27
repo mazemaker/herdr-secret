@@ -1,13 +1,14 @@
 ---
 name: herdr-secret
-description: Use whenever you need a password, API key, token, login, connection string or any other credential from the user. Ask for it through a herdr popup form instead of having the user paste it into the chat, then use it without ever printing it.
+description: Use whenever you need a password, API key, token, login, connection string or any other credential from the user. Ask for it through a herdr popup or Herdr.app dialog instead of having the user paste it into the chat, then use it without ever printing it.
 ---
 
 # Getting credentials with herdr-secret
 
 Never ask the user to paste a credential into the conversation, and never ask them to put one
-in a file for you to read. Ask through `herdr-secret`: the user types the value into a popup
-form in herdr, it goes straight into the OS credential store, and you only get a status line.
+in a file for you to read. Ask through `herdr-secret`: the user types the value into a form (a
+herdr popup, or a dialog in Herdr.app), it goes straight into the OS credential store, and you
+only get a status line.
 
 ## Before asking
 
@@ -61,6 +62,7 @@ herdr-secret rm NAME      # deletes NAME and every NAME.<field>
 
 ## When it is not available
 
-If `herdr-secret` is not on PATH, or you are not running inside herdr (`HERDR_PANE_ID` is not
-set), say so and ask the user how they want to provide the credential. Do not quietly fall back
-to asking them to paste it.
+If `herdr-secret` is not on PATH, or you are running neither inside herdr (`HERDR_PANE_ID` is
+set there) nor in a Herdr.app terminal (`HC_TERMINAL_SOCKET` is set there), say so and ask the
+user how they want to provide the credential. If `ask` answers `FAILED` with a reason, tell the
+user the reason. Do not quietly fall back to asking them to paste it.

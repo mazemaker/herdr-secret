@@ -21,7 +21,8 @@ within a week.
 - A value stored somewhere other than where the result line says, lost, or mixed up with
   another
 - The installer, setup or uninstall changing files they don't announce
-- Anything that makes the npm package or the herdr plugin run code it shouldn't
+- Anything that makes the npm package, the herdr plugin or the Herdr.app mod run code it
+  shouldn't
 
 ## Known limits, not vulnerabilities
 
@@ -32,6 +33,8 @@ These are by design and documented in the README:
 - The "From" line is reported by the requesting agent and is not verified.
 - On Linux without a Secret Service, values are stored in unencrypted 0600 files. Setup asks
   before using them.
+- In Herdr.app, a process running as your user can read the request file (with its one-time
+  pad) and the hex arguments the dialog passes while you save, and so recover the value.
 
 ## Releases
 
