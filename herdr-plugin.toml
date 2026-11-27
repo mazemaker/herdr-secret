@@ -1,0 +1,38 @@
+id = "screenagers.secret"
+name = "herdr-secret"
+version = "0.1.0"
+min_herdr_version = "0.9.5"
+description = "A form popup where coding agents ask you for credentials. Values go straight to the OS credential store; the agent only learns OK or CANCELLED."
+platforms = ["linux", "macos", "windows"]
+
+[[panes]]
+id = "ask"
+title = "Credential request"
+placement = "popup"
+width = 76
+height = 24
+platforms = ["linux", "macos"]
+command = ["python3", "-I", "bin/herdr_secret.py", "form"]
+
+[[panes]]
+id = "ask-windows"
+title = "Credential request"
+placement = "popup"
+width = 76
+height = 24
+platforms = ["windows"]
+command = ["cmd", "/d", "/c", "bin\\herdr-secret.cmd", "form"]
+
+[[actions]]
+id = "setup"
+title = "herdr-secret: put the command on PATH"
+contexts = ["workspace"]
+platforms = ["linux", "macos"]
+command = ["python3", "-I", "bin/herdr_secret.py", "setup"]
+
+[[actions]]
+id = "setup-windows"
+title = "herdr-secret: show how to put the command on PATH"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["cmd", "/d", "/c", "bin\\herdr-secret.cmd", "setup"]

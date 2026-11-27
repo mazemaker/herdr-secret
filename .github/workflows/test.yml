@@ -1,0 +1,49 @@
+name: test
+on: [push, pull_request, workflow_dispatch]
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Throwaway default keychain
+        run: |
+          security create-keychain -p ci ci.keychain
+          security default-keychain -s ci.keychain
+          security unlock-keychain -p ci ci.keychain
+          security set-keychain-settings ci.keychain
+      - run: python3 -I tests/test_store.py
+        env: { EXPECT_BACKEND: macOS Keychain }
+      - run: python3 -I tests/test_form_pty.py
+
+  linux-secret-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y gnome-keyring libsecret-tools dbus-x11
+      - name: Store tests inside a D-Bus session with an unlocked keyring
+        run: |
+          dbus-run-session -- sh -c '
+            printf "ci" | gnome-keyring-daemon --unlock --components=secrets >/dev/null
+            EXPECT_BACKEND="Secret Service" python3 -I tests/test_store.py &&
+            python3 -I tests/test_form_pty.py'
+
+  linux-file-fallback:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 -I tests/test_store.py
+        env: { EXPECT_BACKEND: file 0600 }
+      - run: python3 -I tests/test_form_pty.py
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -I tests/test_store.py
+        env: { EXPECT_BACKEND: Windows Credential Manager }
+      - name: Launcher resolves Python
+        shell: cmd
+        run: bin\herdr-secret.cmd list
