@@ -42,8 +42,11 @@ agent cannot read it.
 
 ## Trust
 
-- No dependencies. This package is one small script that finds herdr and Python and hands over
-  to the plugin.
+- No dependencies and no install scripts. This package is one small script that finds herdr and
+  Python and hands over to the plugin.
+- It runs exactly two programs, `herdr` and `python3` (`py` on Windows), without a shell, and
+  makes no network requests itself. The plugin download is done by `herdr plugin install`,
+  which shows you what it will run first.
 - Published from GitHub Actions with npm provenance: the attestation on each version names the
   commit and workflow run that built it.
 - [What it protects and what it doesn't](https://github.com/mazemaker/herdr-secret#what-this-does-and-doesnt-protect),

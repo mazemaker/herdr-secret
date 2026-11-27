@@ -60,20 +60,21 @@ const USAGE = `herdr-secret (npm)
   npx herdr-secret uninstall         undo setup, optionally remove the plugin
   npx herdr-secret ask|get|list|rm   the plugin's own command (see herdr-secret help)
 
-https://github.com/mazemaker/herdr-secret`;
+Documentation: npm home herdr-secret`;
 
 function main(argv) {
   if (['-h', '--help', 'help'].includes(argv[0])) {
     console.log(USAGE);
     return 0;
   }
-  if (!capture('herdr', ['--version'])) fail('herdr is required: https://herdr.dev');
+  if (!capture('herdr', ['--version'])) fail('herdr is required. Install herdr first, then run this again.');
   const py = findPython();
   const [cmd, ...rest] = argv;
   let p = plugin();
 
-  if (!cmd || cmd === 'install' || cmd === 'setup') {
-    const flags = cmd ? rest : argv;
+  const flagsOnly = !cmd || cmd.startsWith('-');      // `npx herdr-secret --yes` means setup --yes
+  if (flagsOnly || cmd === 'install' || cmd === 'setup') {
+    const flags = flagsOnly ? argv : rest;
     if (!p) {
       const code = run('herdr', ['plugin', 'install', REPO]);
       if (code !== 0) process.exit(code);

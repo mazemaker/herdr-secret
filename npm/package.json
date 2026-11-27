@@ -5,10 +5,33 @@
   "license": "MIT",
   "author": "mazemaker",
   "homepage": "https://github.com/mazemaker/herdr-secret#readme",
-  "repository": { "type": "git", "url": "git+https://github.com/mazemaker/herdr-secret.git", "directory": "npm" },
-  "bugs": { "url": "https://github.com/mazemaker/herdr-secret/issues" },
-  "keywords": ["herdr", "herdr-plugin", "credentials", "secrets", "keychain", "ai-agents", "coding-agents"],
-  "bin": { "herdr-secret": "cli.js" },
-  "files": ["cli.js"],
-  "engines": { "node": ">=18" }
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mazemaker/herdr-secret.git",
+    "directory": "npm"
+  },
+  "bugs": {
+    "url": "https://github.com/mazemaker/herdr-secret/issues"
+  },
+  "keywords": [
+    "herdr",
+    "herdr-plugin",
+    "credentials",
+    "secrets",
+    "keychain",
+    "ai-agents",
+    "coding-agents"
+  ],
+  "bin": {
+    "herdr-secret": "cli.js"
+  },
+  "files": [
+    "cli.js"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test"
+  }
 }
