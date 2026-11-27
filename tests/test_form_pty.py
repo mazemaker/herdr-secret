@@ -38,8 +38,15 @@ def drive(req, fields, keys, lang="en", deadline=""):
     for k in keys:
         os.write(fd, k)
         pump(0.15)
-    pump(1.5)
-    os.waitpid(pid, 0)
+    end = time.time() + 30                       # keep draining until the form exits
+    while True:
+        pump(0.2)
+        if os.waitpid(pid, os.WNOHANG)[0]:
+            break
+        if time.time() > end:
+            os.kill(pid, 9)
+            os.waitpid(pid, 0)
+            raise SystemExit(f"{req}: form did not exit")
     path = os.path.join(state, "herdr-secret", req + ".status")
     with open(path) as f:
         return f.read().strip(), screen.decode("utf-8", "replace")

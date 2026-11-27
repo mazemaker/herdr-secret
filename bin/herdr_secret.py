@@ -619,6 +619,7 @@ class Form:
 
 
 def run_form(term, form, deadline):
+    last = None
     while True:
         if deadline and time.time() >= deadline:
             return "TIMEOUT"
@@ -626,10 +627,12 @@ def run_form(term, form, deadline):
         lines, cursor = form.render(cols, rows)
         frame = "\x1b[H" + "\r\n".join(line + "\x1b[K" for line in lines) + "\x1b[J"
         frame += f"\x1b[{cursor[0]};{cursor[1]}H\x1b[?25h" if cursor else "\x1b[?25l"
-        term.out(frame)
+        if frame != last:                         # only after a key or a resize
+            term.out(frame)
+            last = frame
         k = term.key(1.0)
         if k is None:
-            continue                              # also redraws after a resize
+            continue
         action = form.handle(k)
         if action == "CANCEL":
             return None
