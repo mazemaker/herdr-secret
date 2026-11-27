@@ -1,6 +1,6 @@
 {
   "name": "herdr-secret",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Installer and command for herdr-secret: a form where coding agents ask you for credentials, as a herdr popup or a Herdr.app dialog.",
   "license": "MIT",
   "author": "mazemaker",

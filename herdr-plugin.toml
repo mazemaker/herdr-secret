@@ -1,6 +1,6 @@
 id = "mazemaker.secret"
 name = "herdr-secret"
-version = "0.1.2"
+version = "0.2.0"
 min_herdr_version = "0.9.5"
 description = "A form popup where coding agents ask you for credentials. Values go straight to the OS credential store; the agent only learns OK or CANCELLED."
 platforms = ["linux", "macos", "windows"]
