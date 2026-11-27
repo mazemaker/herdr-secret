@@ -44,14 +44,22 @@ jobs:
       - run: python3 -I tests/test_setup.py
       - run: python3 -I tests/test_app.py
       - run: sh -n install.sh
-      - name: npm package matches the plugin version and packs
+      - name: npm package matches the plugin version and packs with the engine
         run: |
           node --check npm/cli.js
           plugin=$(sed -n 's/^version = "\(.*\)"/\1/p' herdr-plugin.toml)
           npm=$(node -p 'require("./npm/package.json").version')
           [ "$plugin" = "$npm" ] || { echo "herdr-plugin.toml $plugin != npm/package.json $npm"; exit 1; }
           cmp LICENSE npm/LICENSE
-          (cd npm && npm pack --dry-run)
+          node npm/stage.js
+          (cd npm && npm pack --dry-run --json) > "$RUNNER_TEMP/pack.json"
+          node -e '
+            const files = require(process.argv[1])[0].files.map((f) => f.path);
+            const want = ["cli.js", ...require("./npm/stage.js").FILES.map((f) => "engine/" + f)];
+            const missing = want.filter((f) => !files.includes(f));
+            console.log(files.join("\n"));
+            if (missing.length) { console.error("missing from the package:", missing); process.exit(1); }
+          ' "$RUNNER_TEMP/pack.json"
       - run: npm test
         working-directory: npm
 

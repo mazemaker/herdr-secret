@@ -1,7 +1,7 @@
 {
   "name": "herdr-secret",
   "version": "0.1.2",
-  "description": "Installer and command for herdr-secret: a herdr popup form where coding agents ask you for credentials.",
+  "description": "Installer and command for herdr-secret: a form where coding agents ask you for credentials, as a herdr popup or a Herdr.app dialog.",
   "license": "MIT",
   "author": "mazemaker",
   "homepage": "https://github.com/mazemaker/herdr-secret#readme",
@@ -16,6 +16,8 @@
   "keywords": [
     "herdr",
     "herdr-plugin",
+    "herdr-app",
+    "herdr-mod",
     "credentials",
     "secrets",
     "keychain",
@@ -26,7 +28,8 @@
     "herdr-secret": "cli.js"
   },
   "files": [
-    "cli.js"
+    "cli.js",
+    "engine/"
   ],
   "engines": {
     "node": ">=18"

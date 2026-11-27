@@ -3,3 +3,5 @@ __pycache__/
 # written by `herdr-app check`
 mods/*/gpui-kit.d.ts
 mods/*/jsconfig.json
+# copied in from the repository at release time (node npm/stage.js)
+npm/engine/
