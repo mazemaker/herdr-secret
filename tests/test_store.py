@@ -55,6 +55,18 @@ lines, cursor = form.render(76, 40)
 if cursor[1] != 2 + 2 + 6 + 1:
     failures.append(f"wide characters: cursor column {cursor[1]}")
 
+# the form says where the value goes, and only claims encryption where it is true
+for label, want in (("macOS Keychain", "(encrypted)"), ("Secret Service", "(encrypted)"),
+                    ("Windows Credential Manager", "(encrypted)"), ("file 0600", "(not encrypted)")):
+    text, enc = hs.STORE_NOTE[label]
+    if want not in text or enc != (want == "(encrypted)"):
+        failures.append(f"store note for {label}: {text!r}")
+note = hs.store_note()[0]
+lines, _ = hs.Form(fields[:2], "N", "w1:p1", "short", "").render(76, 30)
+joined = " ".join(" ".join(ln.split()) for ln in lines)
+if "Saved : " not in joined or "never sent to the agent's chat" not in joined:
+    failures.append("form does not say where the value goes")
+
 # rm NAME also removes NAME.<field>
 import subprocess  # noqa: E402
 for a in ("ZZ_RM", "ZZ_RM.username", "ZZ_RM.password", "ZZ_RMX"):

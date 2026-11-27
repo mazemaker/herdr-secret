@@ -45,7 +45,21 @@ T = {"title": "Credential requested: ", "from": "From  : ", "for": "For   : ", "
      "required": "All fields are required.", "saved": "Saved to {}.", "failed": "Could not save.",
      "invalid": "Invalid request.", "reported": "  (as reported by the requester)",
      "replaces": "Replaces the stored value of: {}", "timeout": "Timed out. Nothing was saved.",
-     "toolong": "Too long (max {} characters)."}
+     "toolong": "Too long (max {} characters).", "saved_to": "Saved : ",
+     "promise": "{} · never sent to the agent's chat"}
+
+# What the form tells the human about where a value goes. Only the stores that really encrypt
+# say so; the Linux file fallback says plainly that it does not.
+STORE_NOTE = {"macOS Keychain": ("macOS Keychain (encrypted)", True),
+              "Windows Credential Manager": ("Windows Credential Manager (encrypted)", True),
+              "Secret Service": ("your keyring (encrypted)", True),
+              "file 0600": ("a file only you can read (not encrypted)", False)}
+
+
+def store_note():
+    label = backends()[0].label
+    text, encrypted = STORE_NOTE.get(label, (label, False))
+    return T["promise"].format(text), encrypted
 
 
 def clean(text, limit=300):
@@ -364,6 +378,7 @@ def names_any():
 # ---------------------------------------------------------------- terminal form
 
 BOLD, DIM, CYAN, RED, YELLOW, REV, RESET = "\x1b[1m", "\x1b[2m", "\x1b[36m", "\x1b[31m", "\x1b[33m", "\x1b[7m", "\x1b[0m"
+GREEN = "\x1b[32m"
 
 
 class Term:
@@ -483,8 +498,9 @@ def wrap(text, width):
 
 
 class Form:
-    def __init__(self, fields, name, who, purpose, notice):
+    def __init__(self, fields, name, who, purpose, notice, store=None):
         self.fields, self.name, self.who, self.purpose, self.notice = fields, name, who, purpose, notice
+        self.store = store if store is not None else store_note()   # (text, encrypted)
         self.values = [[] for _ in fields]
         self.reveal = [False] * len(fields)
         self.focus = 0          # 0..n-1 fields, n = save, n+1 = cancel
@@ -504,6 +520,9 @@ class Form:
         pad = " " * dwidth(T["for"])
         for i, part in enumerate(wrap(self.purpose, bw - len(pad))[:pmax]):
             add((T["for"] if i == 0 else pad) + part)
+        text, encrypted = self.store
+        for i, part in enumerate(wrap(text, bw - len(pad))[:max(1, pmax - 1)]):
+            add((T["saved_to"] if i == 0 else pad) + part, GREEN if encrypted else YELLOW)
         if self.notice:
             for part in wrap(self.notice, bw)[:nmax]:
                 add(part, YELLOW)
@@ -769,7 +788,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 BEGIN, END = "<!-- herdr-secret:begin -->", "<!-- herdr-secret:end -->"
 SH_BEGIN, SH_END = "# herdr-secret:begin", "# herdr-secret:end"
 MIN_HERDR = (0, 9, 5)
-GREEN = "\x1b[32m"
 TEST_NAME = "HERDR_SECRET_SETUP_TEST"
 AGENTS = [  # label, config dir, command, instruction file, skill dir
     ("Claude Code", "~/.claude", "claude", "~/.claude/CLAUDE.md", "~/.claude/skills/herdr-secret"),
