@@ -29,16 +29,19 @@ at the machine, over SSH, or from a phone.
 
 ## Install
 
-macOS and Linux:
-
 ```sh
-curl -fsSL https://raw.githubusercontent.com/mazemaker/herdr-secret/main/install.sh | sh
+npx herdr-secret@latest
 ```
 
-Windows (PowerShell):
+The same command works on macOS, Linux and Windows. Without Node.js, use the shell installer
+instead:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/mazemaker/herdr-secret/main/install.sh | sh   # macOS, Linux
+```
 
 ```powershell
-irm https://raw.githubusercontent.com/mazemaker/herdr-secret/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/mazemaker/herdr-secret/main/install.ps1 | iex       # Windows
 ```
 
 The installer adds the plugin to herdr (herdr shows you what it will run and asks first), then
@@ -57,8 +60,8 @@ walks you through setup:
 5. **Try it.** Opens the form once with a test value and deletes it afterwards.
 
 Everything it adds sits between `herdr-secret:begin` and `herdr-secret:end` markers.
-`herdr-secret uninstall` removes all of it, asks whether to delete stored credentials, and can
-remove the plugin from herdr.
+`herdr-secret uninstall` (or `npx herdr-secret uninstall`) removes all of it, asks whether to
+delete stored credentials, and can remove the plugin from herdr.
 
 If you would rather read the script first, download `install.sh` and run it with `sh`. If you
 install with plain `herdr plugin install mazemaker/herdr-secret`, setup opens by itself the next
@@ -68,7 +71,8 @@ time herdr starts, or open it any time with
 Requirements:
 
 - herdr 0.9.5 or newer
-- Python 3.8 or newer. Only the standard library is used.
+- Python 3.8 or newer, which the plugin runs on. Only the standard library is used.
+- Node.js 18 or newer, only for the `npx` installer.
   - macOS and Linux: `python3` on the PATH herdr runs with.
   - Windows: the `py` launcher from the python.org installer, or `python` on PATH.
 

@@ -1077,7 +1077,18 @@ def setup_try(w):
         w.ok(f"Saved to {', '.join(sorted(where))} and deleted again")
 
 
+def needs_terminal(argv, what):
+    """Without a terminal there is nobody to answer, so changes need an explicit --yes."""
+    if sys.stdin.isatty() or "--yes" in argv or "-y" in argv:
+        return False
+    print(f"herdr-secret {what} asks before changing anything and needs a terminal. "
+          f"Run it in one, or pass --yes to accept every default.", file=sys.stderr)
+    return True
+
+
 def cmd_setup(argv):
+    if needs_terminal(argv, "setup"):
+        return 2
     interactive = sys.stdin.isatty() and "--yes" not in argv and "-y" not in argv
     if IS_WIN:
         os.system("")
@@ -1135,6 +1146,8 @@ def cmd_setup(argv):
 
 
 def cmd_uninstall(argv):
+    if needs_terminal(argv, "uninstall"):
+        return 2
     interactive = sys.stdin.isatty() and "--yes" not in argv and "-y" not in argv
     if IS_WIN:
         os.system("")
