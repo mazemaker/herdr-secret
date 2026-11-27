@@ -29,13 +29,41 @@ at the machine, over SSH, or from a phone.
 
 ## Install
 
+macOS and Linux:
+
 ```sh
-herdr plugin install mazemaker/herdr-secret
-herdr plugin action invoke mazemaker.secret.setup     # Windows: mazemaker.secret.setup-windows
+curl -fsSL https://raw.githubusercontent.com/mazemaker/herdr-secret/main/install.sh | sh
 ```
 
-`setup` links the `herdr-secret` command into `~/.local/bin`. On Windows it prints the folder
-to add to your PATH instead.
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/mazemaker/herdr-secret/main/install.ps1 | iex
+```
+
+The installer adds the plugin to herdr (herdr shows you what it will run and asks first), then
+walks you through setup:
+
+1. **Requirements.** Checks herdr and Python.
+2. **Credential store.** Saves and deletes a test value to make sure the store works. On Linux
+   without a Secret Service it offers to install `secret-tool`, and tells you before falling
+   back to unencrypted files.
+3. **The `herdr-secret` command.** Links it into `~/.local/bin` and, if that is not on your
+   PATH, offers to add it to your shell profile. On Windows it offers to add the plugin folder
+   to your user PATH.
+4. **Your agents.** Finds Claude Code, Codex, OpenCode and Gemini CLI, shows which files it would
+   change, and asks before adding instructions (and, for Claude Code, a skill) that tell them to
+   ask through herdr-secret instead of asking you to paste credentials.
+5. **Try it.** Opens the form once with a test value and deletes it afterwards.
+
+Everything it adds sits between `herdr-secret:begin` and `herdr-secret:end` markers.
+`herdr-secret uninstall` removes all of it, asks whether to delete stored credentials, and can
+remove the plugin from herdr.
+
+If you would rather read the script first, download `install.sh` and run it with `sh`. If you
+install with plain `herdr plugin install mazemaker/herdr-secret`, setup opens by itself the next
+time herdr starts, or open it any time with
+`herdr plugin action invoke mazemaker.secret.setup` (`setup-windows` on Windows).
 
 Requirements:
 
@@ -43,7 +71,6 @@ Requirements:
 - Python 3.8 or newer. Only the standard library is used.
   - macOS and Linux: `python3` on the PATH herdr runs with.
   - Windows: the `py` launcher from the python.org installer, or `python` on PATH.
-- Linux, recommended: `secret-tool`, from `libsecret-tools` (Debian, Ubuntu) or `libsecret` (Fedora).
 
 ## Use
 
@@ -75,11 +102,8 @@ Ctrl-C cancels.
 
 ### Telling your agent about it
 
-Add something like this to your agent instructions (`CLAUDE.md`, `AGENTS.md`):
-
-> When you need a credential, run `herdr-secret ask NAME "what it is for" [--fields ...]`
-> instead of asking me to paste it. Use it with `herdr-secret get NAME | <command>` and never
-> print it.
+Setup does this for the agents it finds. For any other agent, add the contents of
+[`agents/instructions.md`](agents/instructions.md) to its instructions file.
 
 ## Where values are stored
 
@@ -95,13 +119,6 @@ to logs. The status file the agent reads holds only the outcome and the store's 
 
 The popup is not a herdr pane: it does not show up in `herdr pane list`, and `herdr pane read`
 cannot reach it, so an agent cannot watch what you type.
-
-## Language
-
-The form is in English, or in Indonesian when your locale starts with `id`. To choose
-explicitly, set `HERDR_SECRET_LANG=id` (or `en`) in the agent's environment, or put
-`lang=id` in a file named `config` in the plugin's config directory
-(`herdr plugin config-dir mazemaker.secret`).
 
 ## What this does and doesn't protect
 
@@ -123,6 +140,7 @@ before typing: an agent can be talked into asking for something it shouldn't hav
 herdr plugin link .                 # use a local checkout
 python3 -I tests/test_store.py      # round-trips awkward values through this OS's store
 python3 -I tests/test_form_pty.py   # drives the form in a pseudo-terminal (macOS, Linux)
+python3 -I tests/test_setup.py      # setup and uninstall in a throwaway home with a fake herdr
 ```
 
 CI runs these on macOS, on Linux with and without a Secret Service, and on Windows.

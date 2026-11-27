@@ -15,9 +15,9 @@ import herdr_secret as hs  # noqa: E402
 state = tempfile.mkdtemp()
 
 
-def drive(req, fields, keys, lang="en", deadline=""):
+def drive(req, fields, keys, deadline=""):
     env = dict(os.environ, SECRET_NAME="ZZ_FORM", SECRET_REQ=req, SECRET_FIELDS=fields,
-               SECRET_FROM="test", SECRET_PROMPT="pty test \x1b[2J", SECRET_LANG=lang,
+               SECRET_FROM="test", SECRET_PROMPT="pty test \x1b[2J",
                SECRET_DEADLINE=deadline, XDG_STATE_HOME=state, COLUMNS="78", LINES="24")
     pid, fd = pty.fork()
     if pid == 0:
@@ -65,11 +65,9 @@ if "\x1b[2J" in screen.split("pty test")[1][:10]:
 for acct in ("ZZ_FORM.username", "ZZ_FORM.password"):
     hs.remove_any(acct)
 
-status, screen = drive("p2", "username,password", [b"x", b"\x1b"], lang="id")
+status, screen = drive("p2", "username,password", [b"x", b"\x1b"])
 if status != "CANCELLED":
     failures.append(f"cancel: status {status!r}")
-if "Credential diminta" not in screen:
-    failures.append("lang=id not applied")
 if any(n.startswith("ZZ_FORM") for n in hs.names_any()):
     failures.append("cancel stored something")
 

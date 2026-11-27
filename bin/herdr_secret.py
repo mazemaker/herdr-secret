@@ -8,7 +8,8 @@
   herdr-secret get NAME     value to stdout; refuses a terminal, so pipe it into the target
   herdr-secret list         stored names, never values
   herdr-secret rm NAME      delete NAME and any NAME.<field> entries
-  herdr-secret setup        link the herdr-secret command into ~/.local/bin (Windows: print PATH hint)
+  herdr-secret setup        interactive setup: store check, PATH, agent instructions, test form
+  herdr-secret uninstall    undo everything setup added (asks before deleting stored values)
 
 Storage: macOS Keychain, Windows Credential Manager, Linux Secret Service (secret-tool),
 or a 0600 file on Linux machines without a Secret Service. Values never pass through argv.
@@ -38,40 +39,13 @@ PLAIN_BY_DEFAULT = {"user", "username", "email", "login", "host", "url"}
 DEVNULL = subprocess.DEVNULL
 CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
-TEXT = {
-    "en": {"title": "Credential requested: ", "from": "From  : ", "for": "For   : ", "hidden": " (hidden)",
-           "save": "[ Save ]", "cancel": "[ Cancel ]", "value": "Value", "unknown": "unknown",
-           "help": "Tab/↑↓ move · Enter next · Ctrl-R reveal · Esc cancel",
-           "required": "All fields are required.", "saved": "Saved to {}.", "failed": "Could not save.",
-           "invalid": "Invalid request.", "reported": "  (as reported by the requester)",
-           "replaces": "Replaces the stored value of: {}", "timeout": "Timed out. Nothing was saved.",
-           "toolong": "Too long (max {} characters)."},
-    "id": {"title": "Credential diminta: ", "from": "Dari  : ", "for": "Untuk : ", "hidden": " (tersembunyi)",
-           "save": "[ Simpan ]", "cancel": "[ Batal ]", "value": "Nilai", "unknown": "tidak diketahui",
-           "help": "Tab/↑↓ pindah · Enter lanjut · Ctrl-R lihat isian · Esc batal",
-           "required": "Semua kolom wajib diisi.", "saved": "Tersimpan di {}.", "failed": "Gagal menyimpan.",
-           "invalid": "Permintaan tidak valid.", "reported": "  (menurut peminta)",
-           "replaces": "Menimpa nilai lama: {}", "timeout": "Waktu habis. Tidak ada yang disimpan.",
-           "toolong": "Terlalu panjang (maks {} karakter)."},
-}
-
-
-def lang():
-    """SECRET_LANG (forwarded from the asking side) > lang= in the plugin config > the locale."""
-    want = os.environ.get("SECRET_LANG", "")
-    cfg = os.environ.get("HERDR_PLUGIN_CONFIG_DIR")
-    if not want and cfg:
-        try:
-            with open(os.path.join(cfg, "config"), encoding="utf-8") as f:
-                for line in f:
-                    k, _, v = line.partition("=")
-                    if k.strip() == "lang":
-                        want = v.strip()
-        except OSError:
-            pass
-    if not want:
-        want = (os.environ.get("LC_ALL") or os.environ.get("LANG") or "")[:2]
-    return want if want in TEXT else "en"
+T = {"title": "Credential requested: ", "from": "From  : ", "for": "For   : ", "hidden": " (hidden)",
+     "save": "[ Save ]", "cancel": "[ Cancel ]", "value": "Value", "unknown": "unknown",
+     "help": "Tab/↑↓ move · Enter next · Ctrl-R reveal · Esc cancel",
+     "required": "All fields are required.", "saved": "Saved to {}.", "failed": "Could not save.",
+     "invalid": "Invalid request.", "reported": "  (as reported by the requester)",
+     "replaces": "Replaces the stored value of: {}", "timeout": "Timed out. Nothing was saved.",
+     "toolong": "Too long (max {} characters)."}
 
 
 def clean(text, limit=300):
@@ -509,15 +483,15 @@ def wrap(text, width):
 
 
 class Form:
-    def __init__(self, fields, name, who, purpose, notice, T):
-        self.fields, self.name, self.who, self.purpose, self.notice, self.T = fields, name, who, purpose, notice, T
+    def __init__(self, fields, name, who, purpose, notice):
+        self.fields, self.name, self.who, self.purpose, self.notice = fields, name, who, purpose, notice
         self.values = [[] for _ in fields]
         self.reveal = [False] * len(fields)
         self.focus = 0          # 0..n-1 fields, n = save, n+1 = cancel
         self.error = ""
 
     def build(self, cols, compact, pmax, nmax, blanks, show_help):
-        T, n = self.T, len(self.fields)
+        n = len(self.fields)
         bw = max(24, min(cols - 4, 68))
         lines, cursor = [], None
 
@@ -599,7 +573,7 @@ class Form:
                 empty = [i for i in range(n) if not self.values[i]]
                 if not empty:
                     return "SAVE"
-                self.focus, self.error = empty[0], self.T["required"]
+                self.focus, self.error = empty[0], T["required"]
             else:
                 self.focus += 1
         elif self.focus < n:
@@ -612,7 +586,7 @@ class Form:
                 self.reveal[self.focus] = not self.reveal[self.focus]
             elif isinstance(k, tuple):
                 if len(v) >= MAX_VALUE:
-                    self.error = self.T["toolong"].format(MAX_VALUE)
+                    self.error = T["toolong"].format(MAX_VALUE)
                 else:
                     v.append(k[1])
         return None
@@ -656,7 +630,6 @@ def parse_fields(spec, value_label="Value"):
 
 
 def cmd_form():
-    T = TEXT[lang()]
     name = os.environ.get("SECRET_NAME", "")
     req = os.environ.get("SECRET_REQ", "")
     try:
@@ -687,7 +660,7 @@ def cmd_form():
         existing = [a for a in accts if prev[a] is not None]
         notice = T["replaces"].format(", ".join(existing)) if existing else ""
         who = clean(os.environ.get("SECRET_FROM", ""), 80) or T["unknown"]
-        form = Form(fields, name, who, clean(os.environ.get("SECRET_PROMPT", "")), notice, T)
+        form = Form(fields, name, who, clean(os.environ.get("SECRET_PROMPT", "")), notice)
         try:
             with Term() as t:
                 result = run_form(t, form, deadline)
@@ -764,8 +737,7 @@ def cmd_ask(argv):
            "--entrypoint", "ask-windows" if IS_WIN else "ask", "--focus"]
     env = {"SECRET_NAME": name, "SECRET_PROMPT": clean(purpose), "SECRET_FIELDS": fields,
            "SECRET_REQ": req, "SECRET_DEADLINE": f"{deadline:.0f}",
-           "SECRET_FROM": os.environ.get("HERDR_PANE_ID", "outside herdr"),
-           "SECRET_LANG": os.environ.get("HERDR_SECRET_LANG", "")}
+           "SECRET_FROM": os.environ.get("HERDR_PANE_ID", "outside herdr")}
     for k, v in env.items():
         cmd += ["--env", f"{k}={v}"]
     tag = f" ({fields})" if fields and fields != "value:plain" else ""
@@ -791,28 +763,444 @@ def cmd_ask(argv):
     return 1
 
 
-def cmd_setup():
-    here = os.path.dirname(os.path.realpath(__file__))
+# ---------------------------------------------------------------- setup wizard
+
+ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+BEGIN, END = "<!-- herdr-secret:begin -->", "<!-- herdr-secret:end -->"
+SH_BEGIN, SH_END = "# herdr-secret:begin", "# herdr-secret:end"
+MIN_HERDR = (0, 9, 5)
+GREEN = "\x1b[32m"
+TEST_NAME = "HERDR_SECRET_SETUP_TEST"
+AGENTS = [  # label, config dir, command, instruction file, skill dir
+    ("Claude Code", "~/.claude", "claude", "~/.claude/CLAUDE.md", "~/.claude/skills/herdr-secret"),
+    ("Codex", "~/.codex", "codex", "~/.codex/AGENTS.md", None),
+    ("OpenCode", "~/.config/opencode", "opencode", "~/.config/opencode/AGENTS.md", None),
+    ("Gemini CLI", "~/.gemini", "gemini", "~/.gemini/GEMINI.md", None),
+]
+
+
+def herdr_bin():
+    return os.environ.get("HERDR_BIN_PATH") or shutil.which("herdr") or "herdr"
+
+
+def herdr_json(*args):
+    import json
+    try:
+        r = subprocess.run([herdr_bin(), *args], capture_output=True, text=True, timeout=30)
+        return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else None
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return None
+
+
+def herdr_version():
+    try:
+        out = subprocess.run([herdr_bin(), "--version"], capture_output=True, text=True, timeout=15).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    m = re.search(r"(\d+)\.(\d+)\.(\d+)", out)
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def installed_plugin():
+    d = herdr_json("plugin", "list", "--json") or {}
+    for p in (d.get("result") or {}).get("plugins", []):
+        if p.get("plugin_id") == PLUGIN_ID:
+            return p
+    return None
+
+
+def plugin_version():
+    try:
+        with open(os.path.join(ROOT, "herdr-plugin.toml"), encoding="utf-8") as f:
+            m = re.search(r'^version\s*=\s*"([^"]+)"', f.read(), re.M)
+            return m.group(1) if m else "?"
+    except OSError:
+        return "?"
+
+
+def tilde(path):
+    home = os.path.expanduser("~")
+    return "~" + path[len(home):] if path.startswith(home) else path
+
+
+def put_block(path, body, begin=BEGIN, end=END):
+    """Insert or replace our marked block, keeping the rest of the file and its permissions."""
+    path = os.path.expanduser(path)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    try:
+        with open(path, encoding="utf-8") as f:
+            old = f.read()
+        mode = os.stat(path).st_mode & 0o777
+    except FileNotFoundError:
+        old, mode = "", 0o644
+    block = f"{begin}\n{body.strip()}\n{end}\n"
+    pat = re.compile(re.escape(begin) + r".*?" + re.escape(end) + r"\n?", re.S)
+    if pat.search(old):
+        new = pat.sub(lambda _m: block, old)
+    else:
+        new = old + ("\n" if old and not old.endswith("\n") else "") + ("\n" if old.strip() else "") + block
+    if new != old:
+        write_atomic(path, new)
+        if not IS_WIN:
+            os.chmod(path, mode)
+    return path
+
+
+def drop_block(path, begin=BEGIN, end=END):
+    path = os.path.expanduser(path)
+    try:
+        with open(path, encoding="utf-8") as f:
+            old = f.read()
+        mode = os.stat(path).st_mode & 0o777
+    except FileNotFoundError:
+        return False
+    new = re.sub(r"\n?" + re.escape(begin) + r".*?" + re.escape(end) + r"\n?", "\n", old, flags=re.S)
+    if new == old:
+        return False
+    new = new.strip("\n") + "\n" if new.strip() else ""
+    write_atomic(path, new)
+    if not IS_WIN:
+        os.chmod(path, mode)
+    return True
+
+
+def shell_profile():
+    sh = os.path.basename(os.environ.get("SHELL", ""))
+    if sh == "zsh":
+        return os.path.expanduser("~/.zshrc"), 'export PATH="$HOME/.local/bin:$PATH"'
+    if sh == "bash":
+        prof = "~/.bash_profile" if IS_MAC and os.path.exists(os.path.expanduser("~/.bash_profile")) else "~/.bashrc"
+        return os.path.expanduser(prof), 'export PATH="$HOME/.local/bin:$PATH"'
+    if sh == "fish":
+        return os.path.expanduser("~/.config/fish/conf.d/herdr-secret.fish"), "fish_add_path -g $HOME/.local/bin"
+    return None, None
+
+
+def win_user_path(add=None, remove=None):
+    import ctypes
+    import winreg
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment", 0, winreg.KEY_READ | winreg.KEY_WRITE) as k:
+        try:
+            cur, kind = winreg.QueryValueEx(k, "Path")
+        except FileNotFoundError:
+            cur, kind = "", winreg.REG_EXPAND_SZ
+        parts = [p for p in cur.split(";") if p]
+        same = lambda a, b: os.path.normcase(a.rstrip("\\")) == os.path.normcase(b.rstrip("\\"))  # noqa: E731
+        if add and not any(same(p, add) for p in parts):
+            parts.append(add)
+        if remove:
+            parts = [p for p in parts if not same(p, remove)]
+        new = ";".join(parts)
+        if new == cur:
+            return False
+        winreg.SetValueEx(k, "Path", 0, kind, new)
+    ctypes.windll.user32.SendMessageTimeoutW(0xFFFF, 0x1A, 0, "Environment", 0x2, 2000, None)
+    return True
+
+
+def linux_keyring_install():
+    for tool, cmd in (("apt-get", ["sudo", "apt-get", "install", "-y", "libsecret-tools"]),
+                      ("dnf", ["sudo", "dnf", "install", "-y", "libsecret"]),
+                      ("pacman", ["sudo", "pacman", "-S", "--needed", "--noconfirm", "libsecret"]),
+                      ("zypper", ["sudo", "zypper", "install", "-y", "libsecret-tools"])):
+        if shutil.which(tool):
+            return cmd
+    return None
+
+
+class Wizard:
+    def __init__(self, interactive):
+        self.interactive = interactive
+
+    def step(self, i, total, title):
+        print(f"\n{BOLD}{i}/{total}  {title}{RESET}")
+
+    def ok(self, text):
+        print(f"     {GREEN}✓{RESET} {text}")
+
+    def warn(self, text):
+        print(f"     {YELLOW}!{RESET} {text}")
+
+    def bad(self, text):
+        print(f"     {RED}✗{RESET} {text}")
+
+    def note(self, text):
+        print(f"       {DIM}{text}{RESET}")
+
+    def yes(self, question, default=True):
+        if not self.interactive:
+            return default
+        hint = "Y/n" if default else "y/N"
+        while True:
+            try:
+                a = input(f"     {question} [{hint}] ").strip().lower()
+            except EOFError:
+                return default
+            if not a:
+                return default
+            if a in ("y", "yes"):
+                return True
+            if a in ("n", "no"):
+                return False
+
+
+def setup_marker():
+    return os.path.join(state_dir(), "setup.json")
+
+
+def write_marker(status, **extra):
+    import json
+    write_atomic(setup_marker(), json.dumps(dict(status=status, version=plugin_version(), **extra)) + "\n")
+
+
+def setup_store(w):
+    v = secrets.token_hex(8)
+    where = store_any(TEST_NAME, v)
+    remove_any(TEST_NAME)
+    if where is None:
+        w.bad("Could not write to any credential store.")
+        return False
+    if where != FileStore.label:
+        w.ok(f"{where} works")
+        return True
+    w.warn("No Secret Service (GNOME Keyring, KWallet) is reachable on this machine.")
+    w.note("Without one, values are saved as unencrypted files that only your user can read (mode 0600).")
+    cmd = None if shutil.which("secret-tool") else linux_keyring_install()
+    if cmd and w.yes(f"Install secret-tool now ({' '.join(cmd)})?", default=False):
+        subprocess.run(cmd)
+        if shutil.which("secret-tool"):
+            where = store_any(TEST_NAME, v)
+            remove_any(TEST_NAME)
+            if where == SecretService.label:
+                w.ok("Secret Service works")
+                return True
+            w.warn("secret-tool is installed but no keyring is running (common on servers without a desktop).")
+    if not w.yes("Use the 0600 file store on this machine?", default=True):
+        w.bad("Setup stopped: no store you accepted.")
+        return False
+    w.ok("Using 0600 files in ~/.local/share/herdr-secret/store")
+    return True
+
+
+def setup_command(w):
+    """Put herdr-secret on PATH. Returns what was changed, for uninstall."""
+    changed = {}
+    bindir_win = os.path.join(ROOT, "bin")
     if IS_WIN:
-        print("Add this folder to your user PATH, then open a new terminal:")
-        print(f"  {here}")
-        print("PowerShell:")
-        print(f'  [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";{here}", "User")')
-        return 0
-    target = os.path.join(here, "herdr-secret")
+        if w.yes(f"Add {bindir_win} to your user PATH?"):
+            if win_user_path(add=bindir_win):
+                changed["winpath"] = bindir_win
+                w.ok("Added to your user PATH. New terminals will find herdr-secret.")
+            else:
+                w.ok("Already on your user PATH.")
+        else:
+            w.warn(f"Skipped. Agents need {bindir_win} on PATH to run herdr-secret.")
+        return changed
+    target = os.path.join(ROOT, "bin", "herdr-secret")
     bindir = os.path.expanduser("~/.local/bin")
     link = os.path.join(bindir, "herdr-secret")
     os.makedirs(bindir, exist_ok=True)
+    if os.path.lexists(link) and not (os.path.islink(link) and os.readlink(link).endswith(os.path.join("bin", "herdr-secret"))):
+        w.bad(f"{tilde(link)} exists and is not ours; left it alone.")
+        return changed
     if os.path.lexists(link):
-        if not (os.path.islink(link) and os.readlink(link).endswith(os.path.join("bin", "herdr-secret"))):
-            print(f"{link} already exists and is not a herdr-secret link; left it alone")
-            return 1
         os.unlink(link)
     os.symlink(target, link)
-    print(f"linked {link} -> {target}")
-    if bindir not in os.environ.get("PATH", "").split(os.pathsep):
-        print(f"note: {bindir} is not on PATH yet; add it in your shell profile")
+    w.ok(f"Linked {tilde(link)}")
+    if bindir in [os.path.expanduser(p) for p in os.environ.get("PATH", "").split(os.pathsep)]:
+        w.ok("~/.local/bin is on PATH")
+        return changed
+    profile, line = shell_profile()
+    if not profile:
+        w.warn("~/.local/bin is not on PATH, and your shell's profile is unknown. Add it there.")
+    elif w.yes(f"~/.local/bin is not on PATH. Add it in {tilde(profile)}?"):
+        put_block(profile, line, SH_BEGIN, SH_END)
+        changed["profile"] = profile
+        w.ok(f"Added to {tilde(profile)}. New shells will find herdr-secret.")
+    return changed
+
+
+def setup_agents(w):
+    with open(os.path.join(ROOT, "agents", "instructions.md"), encoding="utf-8") as f:
+        instructions = f.read()
+    with open(os.path.join(ROOT, "agents", "SKILL.md"), encoding="utf-8") as f:
+        skill = f.read()
+    found = [a for a in AGENTS if os.path.isdir(os.path.expanduser(a[1])) or shutil.which(a[2])]
+    if not found:
+        w.note("No supported agent found (Claude Code, Codex, OpenCode, Gemini CLI).")
+        w.note(f"For another agent, add {tilde(os.path.join(ROOT, 'agents', 'instructions.md'))} to its instructions.")
+        return []
+    for label, _d, _c, instr, skill_dir in found:
+        files = [instr] + ([skill_dir + "/SKILL.md"] if skill_dir else [])
+        w.note(f"{label}: {', '.join(files)}")
+    if not w.yes(f"Teach {', '.join(a[0] for a in found)} to ask through herdr-secret?"):
+        w.warn("Skipped. Run setup again to add them later.")
+        return []
+    done = []
+    for label, _d, _c, instr, skill_dir in found:
+        put_block(instr, instructions)
+        if skill_dir:
+            d = os.path.expanduser(skill_dir)
+            os.makedirs(d, exist_ok=True)
+            write_atomic(os.path.join(d, "SKILL.md"), skill)
+            if not IS_WIN:
+                os.chmod(os.path.join(d, "SKILL.md"), 0o644)
+        done.append(label)
+        w.ok(label)
+    w.note("Agent sessions that are already running pick this up when they restart.")
+    return done
+
+
+def setup_try(w):
+    if not (w.interactive and sys.stdin.isatty()):
+        w.note("Skipped (not interactive).")
+        return
+    if not w.yes("Try the form now? It saves a test value and deletes it right after."):
+        return
+    fields, _ = parse_fields("username,password")
+    form = Form(fields, TEST_NAME, "herdr-secret setup", "Type anything. It is deleted right after.", "")
+    try:
+        with Term() as t:
+            res = run_form(t, form, time.time() + 180)
+    except KeyboardInterrupt:
+        res = None
+    if not isinstance(res, list):
+        w.warn("Form closed without saving.")
+        return
+    where = {store_any(f"{TEST_NAME}.{f}", v) for (f, _l, _h), v in zip(fields, res)}
+    res[:] = []
+    for f, _l, _h in fields:
+        remove_any(f"{TEST_NAME}.{f}")
+    if None in where:
+        w.bad("Saving failed.")
+    else:
+        w.ok(f"Saved to {', '.join(sorted(where))} and deleted again")
+
+
+def cmd_setup(argv):
+    interactive = sys.stdin.isatty() and "--yes" not in argv and "-y" not in argv
+    if IS_WIN:
+        os.system("")
+    w = Wizard(interactive)
+    in_popup = bool(os.environ.get("HERDR_PLUGIN_ENTRYPOINT_ID"))
+    print(f"\n{BOLD}herdr-secret {plugin_version()} setup{RESET}")
+    print(f"{DIM}Lets your coding agents ask you for credentials in a herdr popup.{RESET}")
+    try:
+        w.step(1, 5, "Requirements")
+        w.ok(f"Python {sys.version.split()[0]}")
+        hv = herdr_version()
+        if hv is None:
+            w.bad("herdr not found. Install it from https://herdr.dev, then run this again.")
+            return 1
+        if hv < MIN_HERDR:
+            w.bad(f"herdr {'.'.join(map(str, hv))} is too old; {'.'.join(map(str, MIN_HERDR))} or newer is needed. Run: herdr update")
+            return 1
+        w.ok(f"herdr {'.'.join(map(str, hv))}")
+        if installed_plugin():
+            w.ok("Plugin is registered with herdr")
+        elif w.yes(f"The plugin is not registered with herdr. Link this copy ({tilde(ROOT)})?"):
+            subprocess.run([herdr_bin(), "plugin", "link", ROOT], stdout=DEVNULL)
+            (w.ok if installed_plugin() else w.bad)("Plugin linked" if installed_plugin() else "Linking failed")
+
+        w.step(2, 5, "Credential store")
+        if not setup_store(w):
+            write_marker("incomplete")
+            return 1
+
+        w.step(3, 5, "The herdr-secret command")
+        changed = setup_command(w)
+
+        w.step(4, 5, "Your agents")
+        agents = setup_agents(w)
+
+        w.step(5, 5, "Try it")
+        setup_try(w)
+
+        write_marker("done", agents=agents, **changed)
+        print(f"\n{GREEN}{BOLD}Done.{RESET} Agents can now run: herdr-secret ask NAME \"what it is for\"")
+        print(f"{DIM}Run setup again any time: herdr plugin action invoke {PLUGIN_ID}.setup{RESET}")
+        print(f"{DIM}Remove everything it added: herdr-secret uninstall{RESET}")
+        return 0
+    except KeyboardInterrupt:
+        print(f"\n\nSetup cancelled. Run it again any time: herdr plugin action invoke {PLUGIN_ID}.setup")
+        if not os.path.exists(setup_marker()):
+            write_marker("skipped")
+        return 1
+    finally:
+        if in_popup and sys.stdin.isatty():
+            try:
+                input("\nPress Enter to close.")
+            except (EOFError, KeyboardInterrupt):
+                pass
+
+
+def cmd_uninstall(argv):
+    interactive = sys.stdin.isatty() and "--yes" not in argv and "-y" not in argv
+    if IS_WIN:
+        os.system("")
+    w = Wizard(interactive)
+    print(f"\n{BOLD}herdr-secret uninstall{RESET}")
+    for label, _d, _c, instr, skill_dir in AGENTS:
+        hit = drop_block(instr)
+        if skill_dir:
+            f = os.path.join(os.path.expanduser(skill_dir), "SKILL.md")
+            if os.path.exists(f):
+                os.unlink(f)
+                try:
+                    os.rmdir(os.path.dirname(f))
+                except OSError:
+                    pass
+                hit = True
+        if hit:
+            w.ok(f"Removed instructions for {label}")
+    for prof in ("~/.zshrc", "~/.bashrc", "~/.bash_profile"):
+        if drop_block(prof, SH_BEGIN, SH_END):
+            w.ok(f"Removed the PATH line from {prof}")
+    fish = os.path.expanduser("~/.config/fish/conf.d/herdr-secret.fish")
+    if os.path.exists(fish):
+        os.unlink(fish)
+        w.ok("Removed the fish PATH file")
+    if IS_WIN:
+        if win_user_path(remove=os.path.join(ROOT, "bin")):
+            w.ok("Removed the plugin folder from your user PATH")
+    else:
+        link = os.path.expanduser("~/.local/bin/herdr-secret")
+        if os.path.islink(link) and os.readlink(link).endswith(os.path.join("bin", "herdr-secret")):
+            os.unlink(link)
+            w.ok("Removed ~/.local/bin/herdr-secret")
+    names = names_any()
+    if names:
+        w.note(f"Stored: {', '.join(names)}")
+        if w.yes(f"Delete these {len(names)} stored credential(s) too?", default=False):
+            for n in names:
+                remove_any(n)
+            w.ok("Deleted stored credentials")
+        else:
+            w.note("Kept. They stay in your credential store.")
+    try:
+        os.unlink(setup_marker())
+    except OSError:
+        pass
+    p = installed_plugin()
+    if p and w.yes("Remove the plugin from herdr as well?"):
+        local = (p.get("source") or {}).get("kind") == "local"
+        subprocess.run([herdr_bin(), "plugin", "unlink" if local else "uninstall", PLUGIN_ID], stdout=DEVNULL)
+        w.ok("Plugin removed from herdr")
+    print(f"\n{BOLD}Done.{RESET}")
     return 0
+
+
+def cmd_open_setup():
+    entry = "setup-windows" if IS_WIN else "setup"
+    return subprocess.run([herdr_bin(), "plugin", "pane", "open", "--plugin", PLUGIN_ID,
+                           "--entrypoint", entry, "--focus"], stdout=DEVNULL).returncode
+
+
+def cmd_startup():
+    """Runs when herdr starts: open the setup popup once if setup has never run."""
+    if os.path.exists(setup_marker()):
+        return 0
+    return cmd_open_setup()
 
 
 def main(argv):
@@ -822,7 +1210,13 @@ def main(argv):
     if cmd == "ask":
         return cmd_ask(args)
     if cmd == "setup":
-        return cmd_setup()
+        return cmd_setup(args)
+    if cmd == "uninstall":
+        return cmd_uninstall(args)
+    if cmd == "open-setup":
+        return cmd_open_setup()
+    if cmd == "startup":
+        return cmd_startup()
     if cmd == "list":
         for n in names_any():
             print(n)

@@ -5,6 +5,7 @@ min_herdr_version = "0.9.5"
 description = "A form popup where coding agents ask you for credentials. Values go straight to the OS credential store; the agent only learns OK or CANCELLED."
 platforms = ["linux", "macos", "windows"]
 
+# The credential form an agent opens with `herdr-secret ask`.
 [[panes]]
 id = "ask"
 title = "Credential request"
@@ -23,16 +24,44 @@ height = 24
 platforms = ["windows"]
 command = ["cmd", "/d", "/c", "bin\\herdr-secret.cmd", "form"]
 
-[[actions]]
+# The interactive setup.
+[[panes]]
 id = "setup"
-title = "herdr-secret: put the command on PATH"
-contexts = ["workspace"]
+title = "herdr-secret setup"
+placement = "popup"
+width = "80%"
+height = "85%"
 platforms = ["linux", "macos"]
 command = ["python3", "-I", "bin/herdr_secret.py", "setup"]
 
-[[actions]]
+[[panes]]
 id = "setup-windows"
-title = "herdr-secret: show how to put the command on PATH"
-contexts = ["workspace"]
+title = "herdr-secret setup"
+placement = "popup"
+width = "80%"
+height = "85%"
 platforms = ["windows"]
 command = ["cmd", "/d", "/c", "bin\\herdr-secret.cmd", "setup"]
+
+[[actions]]
+id = "setup"
+title = "herdr-secret: run setup"
+contexts = ["workspace"]
+platforms = ["linux", "macos"]
+command = ["python3", "-I", "bin/herdr_secret.py", "open-setup"]
+
+[[actions]]
+id = "setup-windows"
+title = "herdr-secret: run setup"
+contexts = ["workspace"]
+platforms = ["windows"]
+command = ["cmd", "/d", "/c", "bin\\herdr-secret.cmd", "open-setup"]
+
+# If the plugin was installed without the installer script, open setup once when herdr starts.
+[[startup]]
+platforms = ["linux", "macos"]
+command = ["python3", "-I", "bin/herdr_secret.py", "startup"]
+
+[[startup]]
+platforms = ["windows"]
+command = ["cmd", "/d", "/c", "bin\\herdr-secret.cmd", "startup"]

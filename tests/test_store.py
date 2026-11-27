@@ -41,9 +41,8 @@ if hs.clean("a\u202eb\u200bc\u2028d") != "abcd":
     failures.append("clean() leaves bidi / zero-width / separator characters")
 
 # layout: the title and "From" line stay on screen whatever the agent asks for
-T = hs.TEXT["en"]
 fields, _ = hs.parse_fields("a,b,c,d,e,f")
-form = hs.Form(fields, "N", "w1:p1", "long purpose " * 40, "Replaces the stored value of: N.a, N.b", T)
+form = hs.Form(fields, "N", "w1:p1", "long purpose " * 40, "Replaces the stored value of: N.a, N.b")
 for cols, rows in ((76, 24), (76, 14), (40, 12), (120, 40)):
     lines, cursor = form.render(cols, rows)
     if len(lines) > rows or "Credential requested: N" not in lines[0] or "w1:p1" not in lines[1]:
