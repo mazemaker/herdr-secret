@@ -31,7 +31,7 @@ at the machine, over SSH, or from a phone.
 
 ```sh
 herdr plugin install mazemaker/herdr-secret
-herdr plugin action invoke screenagers.secret.setup     # Windows: screenagers.secret.setup-windows
+herdr plugin action invoke mazemaker.secret.setup     # Windows: mazemaker.secret.setup-windows
 ```
 
 `setup` links the `herdr-secret` command into `~/.local/bin`. On Windows it prints the folder
@@ -101,7 +101,7 @@ cannot reach it, so an agent cannot watch what you type.
 The form is in English, or in Indonesian when your locale starts with `id`. To choose
 explicitly, set `HERDR_SECRET_LANG=id` (or `en`) in the agent's environment, or put
 `lang=id` in a file named `config` in the plugin's config directory
-(`herdr plugin config-dir screenagers.secret`).
+(`herdr plugin config-dir mazemaker.secret`).
 
 ## What this does and doesn't protect
 

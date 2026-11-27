@@ -28,7 +28,7 @@ import unicodedata
 IS_WIN = os.name == "nt"
 IS_MAC = sys.platform == "darwin"
 SERVICE = "herdr-secret"
-PLUGIN_ID = "screenagers.secret"
+PLUGIN_ID = "mazemaker.secret"
 NAME_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}")
 REQ_RE = re.compile(r"[A-Za-z0-9-]{1,64}")
 FIELD_RE = re.compile(r"[a-z0-9_]{1,32}")
