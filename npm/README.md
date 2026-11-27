@@ -1,7 +1,7 @@
 # herdr-secret
 
 [![npm](https://img.shields.io/npm/v/herdr-secret)](https://www.npmjs.com/package/herdr-secret)
-[![test](https://github.com/mazemaker/herdr-secret/actions/workflows/test.yml/badge.svg)](https://github.com/mazemaker/herdr-secret/actions/workflows/test.yml)
+[![test](https://github.com/mazemaker/herdr-secret/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/mazemaker/herdr-secret/actions/workflows/test.yml)
 [![license](https://img.shields.io/npm/l/herdr-secret)](https://github.com/mazemaker/herdr-secret/blob/main/LICENSE)
 
 Let your coding agents ask you for credentials without the value ever entering their chat.
