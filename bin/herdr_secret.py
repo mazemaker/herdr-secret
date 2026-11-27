@@ -2,13 +2,15 @@
 """herdr-secret: an agent asks the human for a credential through a herdr popup form.
 
   herdr-secret ask NAME "what it is for" [--fields "username,password"] [--plain] [--timeout S]
-      Opens the form in herdr and waits. Prints one line only:
+      Opens the form (a herdr popup, or in Herdr.app the herdr-secret mod's dialog) and waits.
+      Prints one line only:
       OK|CANCELLED|TIMEOUT|FAILED NAME [(fields)] [[where it was stored]]
       With --fields each value is stored as NAME.<field>; without, one hidden value as NAME.
   herdr-secret get NAME     value to stdout; refuses a terminal, so pipe it into the target
   herdr-secret list         stored names, never values
   herdr-secret rm NAME      delete NAME and any NAME.<field> entries
-  herdr-secret setup        interactive setup: store check, PATH, agent instructions, test form
+  herdr-secret setup        interactive setup: store check, PATH, Herdr.app mod, agent instructions,
+                            test form
   herdr-secret uninstall    undo everything setup added (asks before deleting stored values)
 
 Storage: macOS Keychain, Windows Credential Manager, Linux Secret Service (secret-tool),
@@ -1344,6 +1346,118 @@ def setup_agents(w):
     return done
 
 
+# What a standalone install (Herdr.app without the herdr TUI plugin) copies to engine_home().
+# npm/stage.js packs the same files; npm/test checks that the two lists agree.
+ENGINE_FILES = ("herdr-plugin.toml", "bin/herdr_secret.py", "bin/herdr-secret", "bin/herdr-secret.cmd",
+                "agents/instructions.md", "agents/SKILL.md",
+                "mods/herdr-secret/main.js", "mods/herdr-secret/mod.json")
+
+
+def engine_home():
+    if IS_WIN:
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~\\AppData\\Local")
+    else:
+        base = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+    return os.path.join(base, "herdr-secret", "engine")
+
+
+def same_path(a, b):
+    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+
+
+def same_file(a, b):
+    try:
+        with open(a, "rb") as f1, open(b, "rb") as f2:
+            return f1.read() == f2.read()
+    except OSError:
+        return False
+
+
+def copy_file(src, dst, mode=0o644):
+    """A real file, replaced in one step: Herdr.app reloads a mod on every save."""
+    os.makedirs(os.path.dirname(dst), exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(dst), prefix=".tmp-")
+    os.close(fd)
+    try:
+        shutil.copyfile(src, tmp)
+        if not IS_WIN:
+            os.chmod(tmp, mode)
+        os.replace(tmp, dst)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def install_engine(w):
+    """Without the herdr plugin there is no plugin folder to run from, and npx runs this copy
+    from a cache that can be cleared. Copy it to engine_home() and carry on from there."""
+    global ROOT
+    dest = engine_home()
+    if same_path(ROOT, dest):
+        return True
+    missing = [f for f in ENGINE_FILES if not os.path.isfile(os.path.join(ROOT, *f.split("/")))]
+    if missing:
+        w.bad(f"This copy of herdr-secret ({tilde(ROOT)}) is incomplete: {missing[0]} is missing.")
+        return False
+    pairs = [(os.path.join(ROOT, *f.split("/")), os.path.join(dest, *f.split("/"))) for f in ENGINE_FILES]
+    fresh = not os.path.isdir(dest)
+    if not all(same_file(s, d) for s, d in pairs):
+        for (s, d), f in zip(pairs, ENGINE_FILES):
+            copy_file(s, d, 0o755 if f.startswith("bin/herdr") and not f.endswith(".cmd") else 0o644)
+    ROOT = dest
+    w.ok(f"{'Installed' if fresh else 'Updated'} herdr-secret {plugin_version()} in {tilde(dest)}")
+    return True
+
+
+def setup_app_mod(w):
+    """Copy the Herdr.app mod in as real files (Herdr.app does not follow symlinked mods) and
+    have Herdr.app check it. Returns the mod folder, or None."""
+    if not app_present():
+        w.note("Herdr.app not found; skipped. Run setup again after installing it.")
+        return None
+    src, dest = os.path.join(ROOT, "mods", APP_MOD), app_mod_dir()
+    if not all(os.path.isfile(os.path.join(src, f)) for f in APP_MOD_FILES):
+        w.bad(f"This copy of herdr-secret has no Herdr.app mod ({tilde(src)}).")
+        return None
+    linked = os.path.islink(dest)
+    exists = os.path.isdir(dest) and not linked
+    if exists and not is_our_mod(dest):
+        w.bad(f"{tilde(dest)} exists and is not herdr-secret's mod; left it alone.")
+        return None
+    if exists and all(same_file(os.path.join(src, f), os.path.join(dest, f)) for f in APP_MOD_FILES):
+        w.ok(f"The mod in {tilde(dest)} is up to date")
+    else:
+        w.note("In Herdr.app terminals, herdr-secret ask shows its form as this mod's dialog.")
+        verb = "Update" if exists or linked else "Install"
+        if not w.yes(f"{verb} the Herdr.app mod in {tilde(dest)}?"):
+            w.warn("Skipped. herdr-secret ask fails in Herdr.app terminals until the mod is installed.")
+            return None
+        if linked:
+            os.unlink(dest)          # the link only, never what it points to
+        for f in APP_MOD_FILES:
+            copy_file(os.path.join(src, f), os.path.join(dest, f))
+        w.ok(f"{'Updated' if exists or linked else 'Installed'} {tilde(dest)}")
+    app = herdr_app_bin()
+    if not app:
+        w.warn("herdr-app is not on PATH, so the mod was not checked. Herdr.app loads it when it starts.")
+        return dest
+    try:
+        r = subprocess.run([app, "check", dest], capture_output=True, text=True, timeout=120)
+        code, out = r.returncode, (r.stdout + r.stderr).strip()
+    except (OSError, subprocess.TimeoutExpired) as e:
+        code, out = 1, str(e)
+    if code == 0:
+        w.ok("herdr-app check passed")
+    else:
+        w.bad("herdr-app check failed:")
+        for line in out.splitlines()[-6:]:
+            w.note(line)
+    return dest
+
+
 def setup_try(w):
     if not (w.interactive and sys.stdin.isatty()):
         w.note("Skipped (not interactive).")
@@ -1387,46 +1501,70 @@ def cmd_setup(argv):
         os.system("")
     w = Wizard(interactive)
     in_popup = bool(os.environ.get("HERDR_PLUGIN_ENTRYPOINT_ID"))
+    again = "herdr-secret setup"
     print(f"\n{BOLD}herdr-secret {plugin_version()} setup{RESET}")
-    print(f"{DIM}Lets your coding agents ask you for credentials in a herdr popup.{RESET}")
+    print(f"{DIM}Lets your coding agents ask you for credentials in a herdr popup or a Herdr.app dialog.{RESET}")
     try:
-        w.step(1, 5, "Requirements")
+        w.step(1, 6, "Requirements")
         w.ok(f"Python {sys.version.split()[0]}")
-        hv = herdr_version()
+        hv, app = herdr_version(), app_present()
+        tui = hv is not None and hv >= MIN_HERDR
+        if hv is None and not app:
+            w.bad("Neither herdr (the TUI) nor Herdr.app was found. Install one from herdr.dev, then run this again.")
+            return 1
         if hv is None:
-            w.bad("herdr not found. Install it from https://herdr.dev, then run this again.")
-            return 1
-        if hv < MIN_HERDR:
-            w.bad(f"herdr {'.'.join(map(str, hv))} is too old; {'.'.join(map(str, MIN_HERDR))} or newer is needed. Run: herdr update")
-            return 1
-        w.ok(f"herdr {'.'.join(map(str, hv))}")
-        if installed_plugin():
+            w.note("herdr (the TUI) not found; herdr-secret will work through Herdr.app.")
+        elif not tui:
+            old = (f"herdr {'.'.join(map(str, hv))} is too old; {'.'.join(map(str, MIN_HERDR))} or newer "
+                   f"is needed. Run: herdr update")
+            if not app:
+                w.bad(old)
+                return 1
+            w.warn(old + ". Until then, only Herdr.app is set up.")
+        else:
+            w.ok(f"herdr {'.'.join(map(str, hv))}")
+        if app:
+            w.ok(f"Herdr.app ({tilde(app_home())})")
+        plugin = installed_plugin() if tui else None
+        if plugin:
             w.ok("Plugin is registered with herdr")
-        elif w.yes(f"The plugin is not registered with herdr. Link this copy ({tilde(ROOT)})?"):
+        elif tui and w.yes(f"The plugin is not registered with herdr. Link this copy ({tilde(ROOT)})?"):
             subprocess.run([herdr_bin(), "plugin", "link", ROOT], stdout=DEVNULL)
-            (w.ok if installed_plugin() else w.bad)("Plugin linked" if installed_plugin() else "Linking failed")
+            plugin = installed_plugin()
+            (w.ok if plugin else w.bad)("Plugin linked" if plugin else "Linking failed")
+        # Run as the herdr plugin, the command links into the plugin folder. Otherwise (Herdr.app
+        # only, or a copy herdr does not know) it runs from an installed copy of this one.
+        plugin_mode = bool(plugin and plugin.get("plugin_root") and same_path(plugin["plugin_root"], ROOT))
+        if plugin_mode:
+            again = f"herdr plugin action invoke {PLUGIN_ID}.setup"
 
-        w.step(2, 5, "Credential store")
+        w.step(2, 6, "Credential store")
         if not setup_store(w):
             write_marker("incomplete")
             return 1
 
-        w.step(3, 5, "The herdr-secret command")
+        w.step(3, 6, "The herdr-secret command")
+        if not plugin_mode and not install_engine(w):
+            write_marker("incomplete")
+            return 1
         changed = setup_command(w)
 
-        w.step(4, 5, "Your agents")
+        w.step(4, 6, "Herdr.app mod")
+        mod = setup_app_mod(w)
+
+        w.step(5, 6, "Your agents")
         agents = setup_agents(w)
 
-        w.step(5, 5, "Try it")
+        w.step(6, 6, "Try it")
         setup_try(w)
 
-        write_marker("done", agents=agents, **changed)
+        write_marker("done", agents=agents, mod=mod, engine=None if plugin_mode else ROOT, **changed)
         print(f"\n{GREEN}{BOLD}Done.{RESET} Agents can now run: herdr-secret ask NAME \"what it is for\"")
-        print(f"{DIM}Run setup again any time: herdr plugin action invoke {PLUGIN_ID}.setup{RESET}")
+        print(f"{DIM}Run setup again any time: {again}{RESET}")
         print(f"{DIM}Remove everything it added: herdr-secret uninstall{RESET}")
         return 0
     except KeyboardInterrupt:
-        print(f"\n\nSetup cancelled. Run it again any time: herdr plugin action invoke {PLUGIN_ID}.setup")
+        print(f"\n\nSetup cancelled. Run it again any time: {again}")
         if not os.path.exists(setup_marker()):
             write_marker("skipped")
         return 1
@@ -1467,13 +1605,21 @@ def cmd_uninstall(argv):
         os.unlink(fish)
         w.ok("Removed the fish PATH file")
     if IS_WIN:
-        if win_user_path(remove=os.path.join(ROOT, "bin")):
-            w.ok("Removed the plugin folder from your user PATH")
+        for b in dict.fromkeys([os.path.join(ROOT, "bin"), os.path.join(engine_home(), "bin")]):
+            if win_user_path(remove=b):
+                w.ok(f"Removed {b} from your user PATH")
     else:
         link = os.path.expanduser("~/.local/bin/herdr-secret")
         if os.path.islink(link) and os.readlink(link).endswith(os.path.join("bin", "herdr-secret")):
             os.unlink(link)
             w.ok("Removed ~/.local/bin/herdr-secret")
+    mod = app_mod_dir()
+    if os.path.isdir(mod) and not os.path.islink(mod):
+        if is_our_mod(mod):
+            shutil.rmtree(mod, ignore_errors=True)
+            w.ok(f"Removed the Herdr.app mod ({tilde(mod)})")
+        else:
+            w.warn(f"{tilde(mod)} is not herdr-secret's mod; left it alone.")
     names = names_any()
     if names:
         w.note(f"Stored: {', '.join(names)}")
@@ -1483,15 +1629,24 @@ def cmd_uninstall(argv):
             w.ok("Deleted stored credentials")
         else:
             w.note("Kept. They stay in your credential store.")
-    try:
-        os.unlink(setup_marker())
-    except OSError:
-        pass
+    for f in (setup_marker(), os.path.join(app_state_dir(), "app-done")):
+        try:
+            os.unlink(f)
+        except OSError:
+            pass
     p = installed_plugin()
     if p and w.yes("Remove the plugin from herdr as well?"):
         local = (p.get("source") or {}).get("kind") == "local"
         subprocess.run([herdr_bin(), "plugin", "unlink" if local else "uninstall", PLUGIN_ID], stdout=DEVNULL)
         w.ok("Plugin removed from herdr")
+    eng = engine_home()
+    if os.path.isfile(os.path.join(eng, "bin", "herdr_secret.py")):
+        shutil.rmtree(eng, ignore_errors=True)
+        try:
+            os.rmdir(os.path.dirname(eng))   # only when empty: the Linux file store lives beside it
+        except OSError:
+            pass
+        w.ok(f"Removed {tilde(eng)}")
     print(f"\n{BOLD}Done.{RESET}")
     return 0
 
