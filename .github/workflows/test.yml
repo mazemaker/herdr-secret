@@ -54,4 +54,7 @@ jobs:
         run: bin\herdr-secret.cmd list
       - name: install.ps1 parses
         shell: pwsh
-        run: $null = [System.Management.Automation.Language.Parser]::ParseFile("$PWD/install.ps1", [ref]$null, [ref]$errs); if ($errs) { $errs; exit 1 }
+        run: |
+          $tokens = $null; $errs = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD/install.ps1", [ref]$tokens, [ref]$errs)
+          if ($errs) { $errs; exit 1 }
