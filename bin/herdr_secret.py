@@ -821,7 +821,7 @@ APP_GRACE = 1.0               # seconds between one dialog closing and the next 
 
 
 def app_home():
-    return os.environ.get("HERDR_APP_HOME") or os.path.expanduser("~/.config/herdr-app")
+    return os.environ.get("HERDR_APP_HOME") or os.path.normpath(os.path.expanduser("~/.config/herdr-app"))
 
 
 def app_mod_dir():
